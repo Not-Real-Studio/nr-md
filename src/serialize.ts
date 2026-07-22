@@ -85,7 +85,7 @@ function quoteScalar(s: string): string {
  * Reverse of §2.5 escapes for a bare scalar: double backslashes, turn a literal
  * `${` into the opt-out `\${`, escape a leading `sigil[` so it is not read back
  * as a flow-literal, and escape a leading `{` of a fully brace-wrapped string so
- * it is not read back as a JSON5-объект (§3).
+ * it is not read back as a JSON5 object (§3).
  */
 function escapeBareScalar(s: string, sigil: Sigil): string {
   let out = ''
@@ -108,8 +108,8 @@ function escapeBareScalar(s: string, sigil: Sigil): string {
   if (out.length >= 2 && out[0] === sigil && out[1] === '[') {
     out = '\\' + out
   }
-  // Строка, целиком выглядящая как `{...}`, перечиталась бы объектом (§3) —
-  // гасим ведущую `{` эскейпом, тем же идиомом, что и `sigil[` выше.
+  // A string that looks entirely like `{...}` would read back as an object (§3);
+  // escape the leading `{`, the same idiom as `sigil[` above.
   if (isJson5Shaped(out)) {
     out = '\\' + out
   }
@@ -181,13 +181,13 @@ function serializeFlowList(items: ListItem[], sigil: Sigil): string {
  * - scalars → coerced literal with reverse escaping (§1.5)
  * - list (flow-literal) → `sigil[a, b, c]`
  * - InterpolatedValue → its raw text (placeholders and `\${` opt-out restored)
- * - JSON5-объект → канонический relaxed одной строкой (json5-scalar-spec §5)
+ * - JSON5 object → canonical relaxed JSON5 on one line (json5-scalar-spec §5)
  */
 export function serializeValue(value: AttributeValue, sigil: Sigil = '$'): string {
   if (Array.isArray(value)) return serializeFlowList(value, sigil)
   if (value !== null && typeof value === 'object') {
-    // JSON5-объект против InterpolatedValue: guard отсеивает форму
-    // {raw, placeholders}, индексная сигнатура Json5Object её не различает.
+    // JSON5 object vs InterpolatedValue: the guard rejects the {raw, placeholders}
+    // shape, which Json5Object's index signature cannot tell apart on its own.
     if (isJson5Object(value)) return stringifyJson5(value)
     return value.raw // InterpolatedValue
   }
@@ -209,20 +209,20 @@ function isBlockNameCont(c: number): boolean {
 }
 
 /**
- * Позиция сигила, который заставит парсер прочитать строку тела как СТРУКТУРУ
- * (атрибут §2.2 или заголовок §2.1), либо -1. Экранируем именно сигил (`\$`), а
- * не первый символ: `\$` парсер уже разворачивает (§2.5), новых эскейпов (`\#`,
- * `\%`) не вводим. `%role` на уровне документа структурой НЕ является (splitter
- * по запросу cast('messages')) — не трогаем (B3).
+ * Offset of the sigil that would make the parser read a body line as STRUCTURE
+ * (an attribute §2.2 or a header §2.1), or -1. What gets escaped is the sigil
+ * itself (`\$`), not the first character: the parser already unfolds `\$` (§2.5),
+ * and we introduce no new escapes (`\#`, `\%`). A `%role` marker is not structure
+ * at the document level — it belongs to the message splitter — so it is left alone.
  */
 function structuralSigilPos(line: string, sigil: Sigil): number {
-  // Атрибут: сигил + name-start + name-cont* + ':'
+  // Attribute: sigil + name-start + name-cont* + ':'
   if (line[0] === sigil && isNameStart(line.charCodeAt(1))) {
     let i = 2
     while (i < line.length && isBlockNameCont(line.charCodeAt(i))) i++
     if (line[i] === ':') return 0
   }
-  // Заголовок: #{1..6} + ' ' + сигил (имя или закрытие)
+  // Header: #{1..6} + ' ' + sigil (a name, or a closing token)
   let n = 0
   while (n < line.length && line[n] === '#') n++
   if (n >= 1 && n <= 6 && line[n] === ' ' && line[n + 1] === sigil) return n + 1
@@ -230,9 +230,9 @@ function structuralSigilPos(line: string, sigil: Sigil): number {
 }
 
 /**
- * Reverse §2.5 for a plain body string: double backslashes, и защитить строки,
- * которые при репарсе стали бы атрибутом/заголовком, эскейпом сигила (B3).
- * Round-trip: parser разворачивает `\$` ровно один раз (после B1).
+ * Reverse §2.5 for a plain body string: double the backslashes, and escape the
+ * sigil on any line that would re-parse as an attribute or a header.
+ * Round-trip holds because the parser unfolds `\$` exactly once.
  */
 function escapeBodyString(s: string, sigil: Sigil): string {
   return s
@@ -241,8 +241,8 @@ function escapeBodyString(s: string, sigil: Sigil): string {
       let esc = ''
       for (let i = 0; i < line.length; i++) esc += line[i] === '\\' ? '\\\\' : line[i]
       const pos = structuralSigilPos(line, sigil)
-      // Префикс [0..pos) не содержит `\` (только сигил / `#` / пробел), поэтому
-      // индекс в esc совпадает с индексом в line.
+      // The prefix [0..pos) holds no `\` (only sigil / `#` / space), so an index
+      // into esc is the same as an index into line.
       return pos === -1 ? esc : esc.slice(0, pos) + '\\' + esc.slice(pos)
     })
     .join('\n')

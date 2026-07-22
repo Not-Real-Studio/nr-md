@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+# Fixture bytes are the thing under test — never convert them.
+test/samples/** -text

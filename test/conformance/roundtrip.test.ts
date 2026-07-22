@@ -1,15 +1,16 @@
 // Conformance — round-trip parse(serialize(doc)) ≡ doc (format-spec §9, §10).
-// Корпус: блоки, вложенные блоки, flow-массивы, quoted-скаляры, и — главное —
-// ТЕЛА, содержащие строки вида `$key: value`, `## $name`, `%role`.
+// The corpus: blocks, nested blocks, flow arrays, quoted scalars, and — the
+// interesting part — BODIES containing lines that look like `$key: value`,
+// `## $name`, `%role`.
 //
-// Часть кейсов (тела с опасными строками, двойной unescape) падает до фиксов
-// B1/B3 — помечена `.fails`. Пометка снимается в коммите B.
+// A body line that re-parses as structure is the hard case: serialization has to
+// escape the sigil, and the parser has to unfold it exactly once.
 import { describe, it, expect } from 'vitest'
 import { parse } from '../../src/parser.js'
 import { serialize } from '../../src/serialize.js'
 import type { Document, Block } from '../../src/types.js'
 
-/** parse(serialize(doc)) должен дать структурно идентичный документ. */
+/** parse(serialize(doc)) must give a structurally identical document. */
 function rt(text: string): void {
   const doc = parse(text)
   const out = serialize(doc)
@@ -17,7 +18,7 @@ function rt(text: string): void {
   expect(back).toEqual(doc)
 }
 
-/** Round-trip документа, собранного программно (тело задаётся напрямую). */
+/** Round-trip of a document built in code (the body is set directly). */
 function rtDoc(doc: Document): void {
   const out = serialize(doc)
   const back = parse(out)
@@ -31,52 +32,52 @@ function docWith(...children: Block[]): Document {
   return { sigil: '$', root: { name: '', level: 0, attrs: [], children } }
 }
 
-describe('conformance: round-trip — базовый корпус (проходит до B)', () => {
-  it('блоки с атрибутами', () => rt(['# $a', '$x: 1', '# $b my-id', '$y: hello'].join('\n')))
-  it('вложенные блоки', () => rt(['# $p', '$p: 1', '## $c', '$c: 2', '## $d', '$d: 3'].join('\n')))
-  it('flow-массивы', () => rt(['# $b', '$list: $[a, b, "c, d", 1, true]'].join('\n')))
-  it('quoted-скаляры', () =>
+describe('conformance: round-trip — the base corpus', () => {
+  it('blocks with attributes', () => rt(['# $a', '$x: 1', '# $b my-id', '$y: hello'].join('\n')))
+  it('nested blocks', () => rt(['# $p', '$p: 1', '## $c', '$c: 2', '## $d', '$d: 3'].join('\n')))
+  it('flow arrays', () => rt(['# $b', '$list: $[a, b, "c, d", 1, true]'].join('\n')))
+  it('quoted scalars', () =>
     rt(['# $b', '$q: "  spaced  "', '$n: "42"', '$v: "1.10"'].join('\n')))
-  it('коллекция блоков (смешанные id)', () =>
+  it('a collection of blocks (mixed ids)', () =>
     rt(['# $item one', '$v: 1', '# $item', '$v: 2', '# $item three', '$v: 3'].join('\n')))
-  it('интерполяция и opt-out в значениях', () =>
+  it('interpolation and its opt-out inside values', () =>
     rt(['# $b', '$k: hello ${name}!', '$o: price \\${USD}'].join('\n')))
-  it('простое тело прозы', () => rt(['# $b', '$x: 1', 'Просто текст тела.', 'Вторая строка.'].join('\n')))
+  it('a plain prose body', () => rt(['# $b', '$x: 1', 'Just some body text.', 'A second line.'].join('\n')))
 })
 
-describe('conformance: round-trip — тела с опасными строками', () => {
-  it('тело со строкой `$key: value` (B3: эскейп сигила)', () => {
-    rtDoc(docWith(block('b', '$key: value\nобычный текст')))
+describe('conformance: round-trip — bodies with dangerous lines', () => {
+  it('a body line that looks like `$key: value` (the sigil is escaped)', () => {
+    rtDoc(docWith(block('b', '$key: value\nordinary text')))
   })
 
-  it('тело со строкой `## $name` (B3: эскейп сигила)', () => {
+  it('a body line that looks like `## $name` (the sigil is escaped)', () => {
     rtDoc(docWith(block('b', 'intro\n## $inner\noutro')))
   })
 
-  it('тело со строкой `%role` (round-trip на уровне документа стабилен)', () => {
-    // `%role` на уровне документа — не структура (обрабатывается splitter'ом по
-    // запросу cast('messages')), поэтому round-trip не требует эскейпа.
-    rtDoc(docWith(block('b', '%user\nпривет')))
+  it('a body line that looks like `%role` (stable at the document level)', () => {
+    // `%role` is not structure at the document level — a message splitter handles it
+    // on request — so the round-trip needs no escape here.
+    rtDoc(docWith(block('b', '%user\nhello')))
   })
 
-  it('тело со всеми маркерами сразу (B3)', () => {
-    rtDoc(docWith(block('b', '$k: v\n## $h name\n#заголовок $x\n%assistant\nхвост')))
+  it('a body with every marker at once', () => {
+    rtDoc(docWith(block('b', '$k: v\n## $h name\n#heading $x\n%assistant\ntail')))
   })
 
-  it('тело, начинающееся с заголовка-сигила на root', () => {
-    rtDoc(docWith(block('b', '# $top\n$inner: 1\nтело')))
+  it('a body starting with a sigil header at root level', () => {
+    rtDoc(docWith(block('b', '# $top\n$inner: 1\nbody')))
   })
 })
 
-describe('conformance: двойной unescape тела (append path, §2.5)', () => {
-  it('тело возобновляется после блока: `\\\\$`/`\\\\#` unescape-ится один раз (B1)', () => {
-    // root body → блок → close → root body снова. Старый парсер разворачивает
-    // ПЕРВЫЙ фрагмент дважды (\\$ → \$ → $), теряя обратный слеш.
+describe('conformance: double-unescaping a body (the append path, §2.5)', () => {
+  it('a body resumed after a block unescapes `\\\\$`/`\\\\#` exactly once', () => {
+    // root body → block → close → root body again. Unfolding per fragment would
+    // unescape the FIRST fragment twice (\\$ → \$ → $) and lose the backslash.
     const doc = parse(
-      ['один \\\\$ доллар', '# $blk', '$a: 1', '## $', 'два \\\\# решётка'].join('\n'),
+      ['one \\\\$ dollar', '# $blk', '$a: 1', '## $', 'two \\\\# hash'].join('\n'),
     )
     const body = typeof doc.root.body === 'string' ? doc.root.body : (doc.root.body as any)?.raw
-    // Один разворот: \\$ → \$ (обратный слеш сохранён), \\# → \# .
-    expect(body).toBe('один \\$ доллар\n\nдва \\# решётка')
+    // One unfold: \\$ → \$ (the backslash survives), \\# → \# .
+    expect(body).toBe('one \\$ dollar\n\ntwo \\# hash')
   })
 })

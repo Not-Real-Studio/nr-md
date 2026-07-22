@@ -61,28 +61,28 @@ describe('coerce (§3)', () => {
     expect(coerce('1abc')).toBe('1abc')
   })
 
-  it('частично-кавыченное — verbatim, кавычки не срезаются', () => {
+  it('partially quoted — verbatim, the quotes stay on', () => {
     expect(coerce('"yes" or "no"')).toBe('"yes" or "no"')
     expect(coerce('"a" b')).toBe('"a" b')
     expect(coerce('{"m": "x"}')).toBe('{"m": "x"}')
-    expect(coerce('"незакрытая')).toBe('"незакрытая')
+    expect(coerce('"unterminated')).toBe('"unterminated')
   })
 
-  it('fully-quoted — кавычки снимаются (как раньше)', () => {
+  it('fully quoted — the quotes come off', () => {
     expect(coerce('"quoted"')).toBe('quoted')
     expect(coerce('""')).toBe('')
-    expect(coerce('"a\\"b"')).toBe('a"b') // экранированная кавычка внутри — не закрывающая
+    expect(coerce('"a\\"b"')).toBe('a"b') // an escaped quote inside is not the closing one
   })
 })
 
-describe('isFullyQuoted — единственный источник правды о кавычках', () => {
-  it('целиком в кавычках', () => {
+describe('isFullyQuoted — the single source of truth about quotes', () => {
+  it('quoted end to end', () => {
     expect(isFullyQuoted('"x"')).toBe(true)
     expect(isFullyQuoted('""')).toBe(true)
     expect(isFullyQuoted('"a\\"b"')).toBe(true)
   })
 
-  it('частично / без кавычек', () => {
+  it('partially quoted, or not quoted at all', () => {
     expect(isFullyQuoted('"yes" or "no"')).toBe(false)
     expect(isFullyQuoted('x')).toBe(false)
     expect(isFullyQuoted('"')).toBe(false)

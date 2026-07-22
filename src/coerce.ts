@@ -52,13 +52,14 @@ function isFloat(s: string): boolean {
 }
 
 /**
- * Является ли `s` целиком одним quoted-скаляром `"..."` — открывающая кавычка
- * первый символ, закрывающая последний, между ними нет закрывающей (с учётом
- * эскейпов). Только в такой позиции кавычка имеет силу скаляр-литерала: `${}`
- * внутри — литерал, а не плейсхолдер (B2/B5), а сами кавычки снимаются.
+ * Is `s` one quoted scalar and nothing else — opening quote at the first
+ * character, closing quote at the last, no closing quote in between (escapes
+ * honoured). Only in that position does a quote carry the force of a scalar
+ * literal: `${}` inside is literal text rather than an interpolation, and the
+ * quotes themselves come off.
  *
- * Частично-кавыченное (`"yes" or "no"`, JSON `{"m":"${x}"}`) — обычный текст:
- * кавычки его, а не разметки.
+ * Partially quoted text (`"yes" or "no"`, JSON `{"m":"${x}"}`) is ordinary
+ * text — the quotes belong to the content, not to the markup.
  */
 export function isFullyQuoted(s: string): boolean {
   if (s.length < 2 || s.charCodeAt(0) !== 34 /* " */) return false

@@ -1,4 +1,4 @@
-// Value parsing — escapes (§2.5), flow-literals (§4), placeholder integration.
+// Value parsing — escapes (§2.5), flow literals (§4), interpolation lexing (§7).
 
 import type { AttributeValue, BodyValue, ListItem, Sigil } from './types.js'
 import { coerce, isFullyQuoted } from './coerce.js'
@@ -17,7 +17,7 @@ interface EscapeMode {
  *
  * Always recognised: `\$`, `\@`, `\[`, `\{`, `\\`, `\n`, `\t`, `\${`.
  * Context-dependent: `\,` (flow only); `\.` only inside `${}` paths and so
- * is handled by the placeholder parser, not here.
+ * is meaningful only inside `${}`, where this module does not reach.
  *
  * Note on `\${`: this branch is the RESOLVER's final-pass behaviour (run once,
  * after all recursion settles). The parser must NOT feed `\${`-bearing values
@@ -31,16 +31,16 @@ export function unescape(s: string, mode: EscapeMode): string {
   let i = 0
   while (i < s.length) {
     if (s[i] === '\\' && i + 1 < s.length) {
-      // `\${` — literal `${` (opt-out of placeholder).
+      // `\${` — a literal `${` (interpolation opt-out).
       if (s[i + 1] === '$' && s[i + 2] === '{') {
         out += '${'
         i += 3
         continue
       }
       const n = s[i + 1]
-      // `\{` — литеральная `{` (§2.5): значение целиком в фигурных остаётся
-      // строкой, а не JSON5-объектом. Проверяется после `\${` выше, поэтому
-      // opt-out плейсхолдера не задет.
+      // `\{` — a literal `{` (§2.5): a value wrapped in braces stays a string
+      // instead of becoming a JSON5 object. Checked after `\${` above, so the
+      // interpolation opt-out is untouched.
       if (n === '$' || n === '@' || n === '[' || n === '{' || n === '\\') {
         out += n
         i += 2
@@ -131,8 +131,8 @@ function trim(s: string): string {
 
 function parseFlowElement(raw: string): ListItem {
   const t = trim(raw)
-  // Элемент-скаляр-литерал `"..."` → coerce (кавычки снимаются, ${} внутри
-  // литерален). Иначе лексер видит всё (B2).
+  // A whole-element scalar literal `"..."` → coerce (quotes come off, `${}`
+  // inside stays literal). Otherwise the lexer sees everything.
   if (isFullyQuoted(t)) return coerce(t)
   const ph = scanInterpolations(t)
   if (ph.length > 0 || hasOptOutEscape(t)) {
@@ -169,20 +169,20 @@ export function parseAttributeValue(
     }
   }
 
-  // Значение целиком в кавычках → скаляр-литерал: coerce снимает кавычки, ${}
-  // внутри литерален (B2/B5). Частичные кавычки (JSON `{"m":"${x}"}`) — обычный
-  // текст, лексер видит ${} и значение станет InterpolatedValue.
+  // A fully quoted value is a scalar literal: coerce strips the quotes and the
+  // `${}` inside stays literal. Partial quoting (JSON `{"m":"${x}"}`) is ordinary
+  // text — the lexer sees the `${}` and the value becomes an InterpolatedValue.
   if (isFullyQuoted(value)) return coerce(value)
 
   const ph = scanInterpolations(value)
   if (ph.length > 0 || hasOptOutEscape(value)) {
-    // JSON5-детекция откладывается до post-resolve (§7.2): `{model: '${m}'}`
-    // станет объектом после подстановки, а не здесь.
+    // JSON5 detection waits until after resolution (§7.2): `{model: '${m}'}`
+    // becomes an object once the substitution has happened, not here.
     return { raw: value, placeholders: ph }
   }
 
-  // JSON5-объект (§3) — на СЫРОМ значении, до unescape: иначе `\{literal}`
-  // развернулось бы в `{literal}` и было бы поймано детекцией.
+  // JSON5 object (§3) — tested on the RAW value, before unescape: otherwise
+  // `\{literal}` would unfold to `{literal}` and be caught by the detection.
   if (isJson5Shaped(value)) return parseJson5Object(value, line, key)
 
   return coerce(unescape(value, { flow: false }))

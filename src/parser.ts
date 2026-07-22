@@ -89,8 +89,8 @@ function parseHeader(line: string, sigil: Sigil): ParsedHeader | null {
   if (i < line.length) {
     if (line[i] !== ' ') return null
     const tail = line.slice(i + 1).trim()
-    // Bare id — rest of the line as-is. Кавычки — для id, который bare-выводом
-    // потерялся бы: краевые пробелы, пустая строка (§2.1, NOT-236).
+    // Bare id — rest of the line as-is. Quotes are for an id that bare form
+    // would lose: edge whitespace, or an empty string (§2.1).
     if (tail.length > 0) id = isFullyQuoted(tail) ? unescapeQuoted(tail.slice(1, -1)) : tail
   }
   return { level: hash.count, closing: false, name, id }
@@ -146,10 +146,10 @@ export function parse(text: string, options: ParseOptions = {}): Document {
   const root: Block = { name: '', level: 0, attrs: [], children: [] }
   const stack: Block[] = [root]
   let bodyLines: string[] = []
-  // Raw (un-unescaped) тело по блокам — источник истины для склейки строф.
-  // Тело держится сырым до финальной сборки, unescape применяется ровно один раз
-  // в parseBodyValue из ПОЛНОГО raw (§2.5, ревью 03.07 №1). Раньше append-путь
-  // брал уже-unescape-нутое target.body и unescape-ил повторно (\\$ → \$ → $).
+  // Raw (un-unescaped) body per block — the source of truth when stanzas are
+  // joined. The body stays raw until the final assembly, and unescape runs
+  // exactly once, in parseBodyValue, over the COMPLETE raw text (§2.5).
+  // Unescaping per fragment would double-unescape a resumed body (\\$ → \$ → $).
   const bodyRaw = new Map<Block, string>()
 
   const flushBody = (target: Block): void => {
@@ -164,7 +164,7 @@ export function parse(text: string, options: ParseOptions = {}): Document {
       const prev = bodyRaw.get(target)
       const full = prev === undefined ? frag : prev + '\n\n' + frag
       bodyRaw.set(target, full)
-      target.body = parseBodyValue(full) // единый unescape из полного raw
+      target.body = parseBodyValue(full) // one unescape, over the whole raw
     }
     bodyLines = []
   }
@@ -207,7 +207,7 @@ export function parse(text: string, options: ParseOptions = {}): Document {
 
     const attr = parseAttribute(line, sigil)
     if (attr) {
-      // li — 0-based индекс ленты; в ошибках (Json5ParseError) строка 1-based.
+      // li is a 0-based index into the lines; errors (Json5ParseError) are 1-based.
       const value = parseAttributeValue(attr.rawValue, sigil, li + 1, attr.key.join('.'))
       const a: Attribute = { key: attr.key, value }
       top().attrs.push(a)

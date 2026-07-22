@@ -31,16 +31,16 @@ export type { JSONSchema } from './typed-header.js'
 /**
  * Where a field is stored in mdd/mdz (serialize-spec §3.2).
  *
- * `block` (NOT-236) — поле едет ОТДЕЛЬНЫМ дочерним блоком, значение в теле блока.
- * В отличие от `body` (тело блока-родителя, поле может быть только одно) таких
- * полей у объекта сколько угодно: проза карточки (description, scenario, …).
+ * `block` — the field travels as its OWN child block, the value in that block's
+ * body. Unlike `body` (the parent block's body, so at most one such field), an
+ * object may have any number of these: the prose fields (description, scenario…).
  */
 export type XStorage = 'attr' | 'body' | 'name' | 'id' | 'block'
 
 /** How an array is laid out (`x-mdd.list`, §3.2). */
 export type XListMode = 'flow' | 'tbl' | 'lines' | 'blocks'
 
-/** Representation refinement (`x-mdd.as`, §3.9) — `json`: fenced-JSON блок (opaque). */
+/** Representation refinement (`x-mdd.as`, §3.9) — `json`: a fenced JSON block (opaque). */
 export type XAs = 'json'
 
 /**
@@ -132,7 +132,7 @@ function asJson(prop: JSONSchema): boolean {
   return xmdd(prop).as === 'json'
 }
 
-/** Items schema describes a scalar (`blocks` элемент = блок с телом-строкой, §3.5)? */
+/** Does the items schema describe a scalar (a `blocks` element = block with a string body, §3.5)? */
 function isScalarSchema(schema: JSONSchema): boolean {
   const t = schema.type
   return t === 'string' || t === 'number' || t === 'integer' || t === 'boolean'
@@ -167,7 +167,7 @@ function listModeOf(prop: JSONSchema, value: unknown): XListMode {
 }
 
 /**
- * Map field (§3, map-поля): `type: object` + `patternProperties` (or a schema-valued
+ * Map field (§3): `type: object` + `patternProperties` (or a schema-valued
  * `additionalProperties`) and NO `properties` — a `Record<string, V>` laid out as a
  * block of per-key sub-blocks.
  */
@@ -219,19 +219,20 @@ function unknownEnabled(schema: JSONSchema): boolean {
 }
 
 /**
- * `unknown: 'inline'` (§3.6, NOT-236) — неизвестные поля возвращаются СОБСТВЕННЫМИ
- * ключами объекта, а не бэгом `$unknown`. Сериализация одинакова для обоих режимов
- * (bare-ключи вне схемы подхватываются всегда), различие только в форме результата
- * парса: `inline` даёт round-trip формы 1:1 (нужно там, где канон — чужой JSON).
+ * `unknown: 'inline'` (§3.6) — unknown fields come back as the object's OWN keys
+ * rather than in an `$unknown` bag. Serialization is identical either way (bare
+ * keys outside the schema are always picked up); the modes differ only in the
+ * shape of the parse result. `inline` round-trips shape 1:1 — which is what you
+ * need when the canonical form is somebody else's JSON.
  */
 function unknownInline(schema: JSONSchema): boolean {
   return xmdd(schema).unknown === 'inline'
 }
 
 /**
- * `envelope: true` (§3.3, NOT-236) — у корневого объекта нет собственного заголовка
- * (конверт: `@spec`, `@spec_version` + один блок данных), поэтому его дочерние блоки
- * — верхнеуровневые (h1), а не h2. Действует только на плоской раскладке корня.
+ * `envelope: true` (§3.3) — the root object has no header of its own (the envelope
+ * is `@spec`, `@spec_version` plus one data block), so its child blocks sit at the
+ * top level (h1) rather than h2. Applies only to a flat root layout.
  */
 function envelopeEnabled(schema: JSONSchema): boolean {
   return xmdd(schema).envelope === true && !hasNameStorage(schema) && !hasIdStorage(schema)
@@ -374,7 +375,7 @@ function unknownBagOf(obj: Record<string, unknown>, schema: JSONSchema): Record<
   return bag
 }
 
-/** Build the block of a map field: one sub-block per key (§3, map-поля). */
+/** Build the block of a map field: one sub-block per key (§3). */
 function buildMapBlock(
   map: Record<string, unknown>,
   prop: JSONSchema,
@@ -437,13 +438,13 @@ function buildBlock(
       continue
     }
 
-    // as: 'json' — объявленное opaque-поле (extensions площадок): fenced JSON блок.
+    // as: 'json' — a declared opaque field (platform extensions): a fenced JSON block.
     if (asJson(prop)) {
       block.children.push({ name: bname, level: level + 1, attrs: [], children: [], body: jsonFence(value) })
       continue
     }
 
-    // storage: 'block' — своё тело-блок (проза: description, scenario, …).
+    // storage: 'block' — a body block of its own (prose: description, scenario, …).
     if (storage === 'block') {
       const child: Block = { name: bname, level: level + 1, attrs: [], children: [] }
       const b = toBodyString(value)
@@ -467,11 +468,12 @@ function buildBlock(
         })
       } else if (mode === 'blocks') {
         // blocks — one child block per element, all named after the property key
-        // (или x-mdd.block). Элемент-скаляр (массив строк) → блок с телом-строкой.
+        // (or x-mdd.block). A scalar element (array of strings) → a block with a string body.
         const items = itemsOf(prop)
         if (value.length === 0) {
-          // Пустой массив повторяющимися блоками невыразим (ноль блоков = поля нет)
-          // → вырожденный пустой flow-атрибут; парс читает его обратно как [] (§3.5).
+          // An empty array is inexpressible as repeated blocks (zero blocks reads as
+          // 'no field'), so it degenerates to an empty flow attribute, which parses
+          // back as [] (§3.5).
           block.attrs.push({ key: [key], value: [] })
         }
         for (const el of value) {
@@ -558,8 +560,8 @@ export function serializeWithSchema(
 ): string {
   const sigil: Sigil = opts.sigil ?? '$'
   const record = (obj ?? {}) as Record<string, unknown>
-  // envelope — у корня нет своего заголовка, его блоки верхнеуровневые: строим
-  // запись на уровне 0, дети попадают на 1 (h1). Иначе — как было (дети на h2).
+  // envelope — the root has no header of its own and its blocks are top-level, so
+  // build the record at level 0 and children land at 1 (h1). Otherwise children go to h2.
   const built = buildBlock(record, schema, '', envelopeEnabled(schema) ? 0 : 1, ctxOf(opts))
 
   const root: Block = { name: '', level: 0, attrs: [], children: [] }
@@ -753,8 +755,8 @@ function readObject(block: Block, schema: JSONSchema, ctx: Ctx): Record<string, 
       continue
     }
 
-    // as: 'json' — fenced-JSON блок; тело, не распознанное как fence, читается
-    // обобщённо (как unknown-блок) — лучше приблизительно, чем потерять.
+    // as: 'json' — a fenced JSON block. A body not recognised as a fence is read
+    // generically (like an unknown block): approximate beats lost.
     if (asJson(prop)) {
       const child = takeChild(bname)
       if (child) {
@@ -764,7 +766,8 @@ function readObject(block: Block, schema: JSONSchema, ctx: Ctx): Record<string, 
       continue
     }
 
-    // storage: 'block' — своё тело-блок. Пустое тело = пустая строка (блок есть).
+    // storage: 'block' — a body block of its own. An empty body is an empty string
+    // (the block exists).
     if (storage === 'block') {
       const child = takeChild(bname)
       if (child) out[key] = coerceToSchema(bodyText(child.body), prop)
@@ -787,7 +790,7 @@ function readObject(block: Block, schema: JSONSchema, ctx: Ctx): Record<string, 
         }
       } else if (mode === 'blocks') {
         const items = itemsOf(prop)
-        // Elements are repeated blocks named after the property key (или x-mdd.block).
+        // Elements are repeated blocks named after the property key (or x-mdd.block).
         // When the items schema carries an `x-storage: name` field the element's own
         // name replaces that header, so the elements are instead every block the schema
         // does not otherwise claim (documented limitation: at most one such array per
@@ -802,8 +805,8 @@ function readObject(block: Block, schema: JSONSchema, ctx: Ctx): Record<string, 
             isScalarSchema(items) ? coerceToSchema(bodyText(c.body), items) : readObject(c, items, ctx),
           )
         } else {
-          // Ноль блоков — либо поля нет, либо это пустой список: его несёт
-          // вырожденный пустой flow-атрибут (§3.5).
+          // Zero blocks means either no field at all, or an empty list — and an empty
+          // list is carried by the degenerate empty flow attribute (§3.5).
           const a = takeAttr(key)
           if (a && Array.isArray(a.value)) out[key] = []
         }
@@ -896,9 +899,10 @@ function loadAjv2020(): unknown {
   try {
     // Ajv is an OPTIONAL peer (§3.4) — resolve it synchronously if present.
     // This Node-only delegate is the TS binding; ports use their native validator.
-    // eval('require') ломался в ESM (require не существует → validate всегда
-    // кидал «not installed»). process.getBuiltinModule — sync-доступ к builtin
-    // из ESM (Node 22.3+), в браузере guard по typeof process → null → инжект.
+    // eval('require') broke under ESM (there is no require, so validate always threw
+    // 'not installed'). process.getBuiltinModule gives synchronous access to a builtin
+    // from ESM (Node 22.3+); in a browser the typeof guard yields null and the caller
+    // injects a validator instead.
     const builtin = (
       typeof process !== 'undefined' &&
       typeof (process as { getBuiltinModule?: (id: string) => unknown }).getBuiltinModule === 'function'

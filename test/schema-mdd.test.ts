@@ -1,4 +1,4 @@
-// NOT-232 — blocks-режим, catch-all unknown, map-поля, integer.
+// blocks mode, the catch-all unknown bag, map fields, integer.
 import { describe, it, expect, vi } from 'vitest'
 import {
   serializeWithSchema,
