@@ -1,5 +1,6 @@
 // Parse-tree types: what `parse` produces and `serialize` consumes.
-// Spec: format-spec §10 (docs/specs/format-spec.md in @notreal/nrd-core).
+// Section numbers throughout this package refer to format-spec / serialize-spec,
+// the normative grammar reference (see README).
 
 /** Format sigil — `$` for mdz, `@` for mdd. */
 export type Sigil = '@' | '$'
