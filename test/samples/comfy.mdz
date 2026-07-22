@@ -1,0 +1,25 @@
+$type: comfy
+$checkpoint: sdxl/realvis.safetensors
+$steps: 30
+$cfg: 7.5
+$sampler: dpmpp_2m
+$seed: -1
+$tags: $[portrait, studio, "soft, light"]
+
+## $positive
+masterpiece, best quality, 1girl, ${subject}, detailed background
+
+## $negative
+lowres, bad anatomy, worst quality, ${avoid}
+
+## $lora
+name                    | sm  | sc
+zit/pinup.safetensors   | 1.0 | 1.0
+zit/anime.safetensors   | 0.8 | 1.0
+
+## $size
+$width: 1024
+$height: 1024
+
+## $note keep-as-is
+A plain prose body with a literal opt-out \${not_resolved} and a path C:\tmp\out.

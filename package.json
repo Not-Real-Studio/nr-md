@@ -1,0 +1,55 @@
+{
+  "name": "@notrealstudio/nr-md",
+  "version": "0.1.0",
+  "description": "Markdown as structured data: headings become blocks, $key: value lines become attributes. Parser and serializer for the mdd/mdz block grammar.",
+  "keywords": [
+    "markdown",
+    "parser",
+    "serializer",
+    "structured-data",
+    "ast",
+    "config",
+    "frontmatter",
+    "mdd",
+    "mdz",
+    "json5"
+  ],
+  "license": "MIT",
+  "author": "Julian Garrett",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@notrealstudio/nr-json5": "file:../nr-json5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Not-Real-Studio/nr-md.git"
+  },
+  "homepage": "https://github.com/Not-Real-Studio/nr-md#readme",
+  "bugs": {
+    "url": "https://github.com/Not-Real-Studio/nr-md/issues"
+  }
+}
