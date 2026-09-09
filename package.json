@@ -37,7 +37,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@notrealstudio/nr-json5": "file:../nr-json5"
+    "@notrealstudio/nr-json5": "^0.1.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
