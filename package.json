@@ -1,6 +1,6 @@
 {
   "name": "@notrealstudio/nr-md",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Markdown as structured data: headings become blocks, $key: value lines become attributes. Parser and serializer for the mdd/mdz block grammar.",
   "keywords": [
     "markdown",
