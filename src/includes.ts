@@ -1,12 +1,75 @@
 // File includes: $[[path]] / @[[path]] preprocessor (format-spec §2.6).
 // Text-level substitution BEFORE parsing. Recursive with cycle detection.
 // Supports sections: $[[path#section]], $[[#section]] (from current text).
+// Path resolution is the caller's: `resolvePath(target, from)` makes nested
+// includes relative to the file they are written in (the core stays IO-free).
 
 export interface IncludeOptions {
   /** Maximum nesting depth (default: 10). */
   maxDepth?: number
   /** Active sigil — only this sigil's includes are resolved. */
   sigil?: '$' | '@'
+  /**
+   * Canonical id (e.g. file path) of the root document. Passed to
+   * `resolvePath` as `from` for top-level includes.
+   */
+  from?: string
+  /**
+   * Map a target as written in document `from` to a canonical id. When set,
+   * `readFile` receives the id (not the raw target), nested includes resolve
+   * against the file they are written in, and cycles are detected by id.
+   * `undefined` = not found (include left as-is). Without it targets are
+   * passed through verbatim (legacy behaviour).
+   */
+  resolvePath?: (target: string, from: string | undefined) => string | undefined
+  /** On cycle: 'keep' (default) leaves the include as-is, 'throw' raises IncludeCycleError. */
+  onCycle?: 'keep' | 'throw'
+}
+
+/** Include cycle. `chain` — ids from the first repeated one back to itself. */
+export class IncludeCycleError extends Error {
+  readonly chain: string[]
+  constructor(chain: string[]) {
+    super(`include cycle: ${chain.join(' -> ')}`)
+    this.name = 'IncludeCycleError'
+    this.chain = chain
+  }
+}
+
+interface Ctx<R> {
+  readFile: R
+  sigil: string
+  maxDepth: number
+  resolvePath?: (target: string, from: string | undefined) => string | undefined
+  onCycle: 'keep' | 'throw'
+  /** Stack of ids being expanded (cycle detection + error chain). */
+  stack: string[]
+}
+
+function makeCtx<R>(readFile: R, opts?: IncludeOptions): Ctx<R> {
+  return {
+    readFile,
+    sigil: opts?.sigil ?? '$',
+    maxDepth: opts?.maxDepth ?? 10,
+    resolvePath: opts?.resolvePath,
+    onCycle: opts?.onCycle ?? 'keep',
+    stack: opts?.from !== undefined && opts.resolvePath ? [opts.from] : [],
+  }
+}
+
+/** Resolve target → id; `undefined` = not found. */
+function toId(ctx: Ctx<unknown>, target: string): string | undefined {
+  if (!ctx.resolvePath) return target
+  const from = ctx.stack.length ? ctx.stack[ctx.stack.length - 1] : undefined
+  return ctx.resolvePath(target, from)
+}
+
+/** true — cycle, include must be left as-is (or it threw). */
+function isCycle(ctx: Ctx<unknown>, id: string): boolean {
+  const at = ctx.stack.indexOf(id)
+  if (at < 0) return false
+  if (ctx.onCycle === 'throw') throw new IncludeCycleError([...ctx.stack.slice(at), id])
+  return true
 }
 
 /**
@@ -23,9 +86,7 @@ export function resolveIncludes(
   readFile: (path: string) => string | undefined,
   opts?: IncludeOptions,
 ): string {
-  const sigil = opts?.sigil ?? '$'
-  const maxDepth = opts?.maxDepth ?? 10
-  return expand(text, readFile, sigil, maxDepth, new Set(), 0, text)
+  return expand(text, makeCtx(readFile, opts), 0, text)
 }
 
 /**
@@ -36,9 +97,7 @@ export async function resolveIncludesAsync(
   readFile: (path: string) => Promise<string | undefined>,
   opts?: IncludeOptions,
 ): Promise<string> {
-  const sigil = opts?.sigil ?? '$'
-  const maxDepth = opts?.maxDepth ?? 10
-  return expandAsync(text, readFile, sigil, maxDepth, new Set(), 0, text)
+  return expandAsync(text, makeCtx(readFile, opts), 0, text)
 }
 
 // ---------- Extract section from markdown ----------
@@ -95,13 +154,11 @@ function headingLevel(line: string): number {
 
 function expand(
   text: string,
-  readFile: (path: string) => string | undefined,
-  sigil: string,
-  maxDepth: number,
-  visited: Set<string>,
+  ctx: Ctx<(path: string) => string | undefined>,
   depth: number,
   currentText: string,
 ): string {
+  const { sigil, maxDepth } = ctx
   if (depth > maxDepth) return text
 
   let out = ''
@@ -153,13 +210,13 @@ function expand(
         continue
       }
 
-      // Cycle detection
-      if (visited.has(filePath)) {
+      const id = toId(ctx, filePath)
+      if (id === undefined || isCycle(ctx, id)) {
         out += text.slice(start, i)
         continue
       }
 
-      const content = readFile(filePath)
+      const content = ctx.readFile(id)
       if (content === undefined) {
         out += text.slice(start, i)
         continue
@@ -177,9 +234,12 @@ function expand(
       }
 
       // Recurse
-      visited.add(filePath)
-      out += expand(result, readFile, sigil, maxDepth, visited, depth + 1, content)
-      visited.delete(filePath)
+      ctx.stack.push(id)
+      try {
+        out += expand(result, ctx, depth + 1, content)
+      } finally {
+        ctx.stack.pop()
+      }
       continue
     }
 
@@ -194,13 +254,11 @@ function expand(
 
 async function expandAsync(
   text: string,
-  readFile: (path: string) => Promise<string | undefined>,
-  sigil: string,
-  maxDepth: number,
-  visited: Set<string>,
+  ctx: Ctx<(path: string) => Promise<string | undefined>>,
   depth: number,
   currentText: string,
 ): Promise<string> {
+  const { sigil, maxDepth } = ctx
   if (depth > maxDepth) return text
 
   // Collect all include positions first, then resolve in order
@@ -245,12 +303,13 @@ async function expandAsync(
         continue
       }
 
-      if (visited.has(filePath)) {
+      const id = toId(ctx, filePath)
+      if (id === undefined || isCycle(ctx, id)) {
         out += text.slice(start, i)
         continue
       }
 
-      const content = await readFile(filePath)
+      const content = await ctx.readFile(id)
       if (content === undefined) {
         out += text.slice(start, i)
         continue
@@ -266,9 +325,12 @@ async function expandAsync(
         result = extracted
       }
 
-      visited.add(filePath)
-      out += await expandAsync(result, readFile, sigil, maxDepth, visited, depth + 1, content)
-      visited.delete(filePath)
+      ctx.stack.push(id)
+      try {
+        out += await expandAsync(result, ctx, depth + 1, content)
+      } finally {
+        ctx.stack.pop()
+      }
       continue
     }
 

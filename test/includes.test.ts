@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveIncludes, resolveIncludesAsync, extractSection } from '../src/includes.js'
+import { resolveIncludes, resolveIncludesAsync, extractSection, IncludeCycleError } from '../src/includes.js'
 
 function mockFs(files: Record<string, string>): (path: string) => string | undefined {
   return (path) => files[path]
@@ -149,5 +149,60 @@ describe('resolveIncludesAsync', () => {
     const read = mockFsAsync({ 'doc.md': '## API\napi content\n## Other\nother' })
     const result = await resolveIncludesAsync('$[[doc.md#API]]', read)
     expect(result).toBe('## API\napi content')
+  })
+})
+
+describe('resolveIncludes — resolvePath (nested base dir)', () => {
+  // POSIX-like resolver for tests: target relative to dirname(from).
+  function rel(target: string, from: string | undefined): string {
+    const dir = from && from.includes('/') ? from.slice(0, from.lastIndexOf('/')) : ''
+    const out: string[] = []
+    for (const p of (dir ? dir + '/' + target : target).split('/')) {
+      if (p === '' || p === '.') continue
+      if (p === '..') out.pop()
+      else out.push(p)
+    }
+    return out.join('/')
+  }
+
+  it('nested include resolves against the including file', () => {
+    const read = mockFs({
+      'a/b/mid.mdz': 'mid[$[[../../sys/s.mdz]]]',
+      'sys/s.mdz': 'SYS',
+    })
+    expect(resolveIncludes('$[[a/b/mid.mdz]]', read, { from: 'root.mdz', resolvePath: rel }))
+      .toBe('mid[SYS]')
+  })
+
+  it('cycle detected by resolved id, not by spelling', () => {
+    const read = mockFs({ 'x/a.md': '$[[../x/./a.md]]' })
+    expect(resolveIncludes('$[[x/a.md]]', read, { resolvePath: rel })).toBe('$[[../x/./a.md]]')
+  })
+
+  it('onCycle: throw — IncludeCycleError with chain', () => {
+    const read = mockFs({ 'a.md': '$[[b.md]]', 'b.md': '$[[a.md]]' })
+    let err: unknown
+    try {
+      resolveIncludes('$[[a.md]]', read, { from: 'root.md', resolvePath: rel, onCycle: 'throw' })
+    } catch (e) { err = e }
+    expect(err).toBeInstanceOf(IncludeCycleError)
+    expect((err as IncludeCycleError).chain).toEqual(['a.md', 'b.md', 'a.md'])
+  })
+
+  it('self-include of the root is a cycle', () => {
+    const read = mockFs({ 'root.md': 'R' })
+    expect(() => resolveIncludes('$[[root.md]]', read, { from: 'root.md', resolvePath: rel, onCycle: 'throw' }))
+      .toThrow(/root.md -> root.md/)
+  })
+
+  it('resolvePath → undefined leaves include as-is', () => {
+    expect(resolveIncludes('$[[nope]]', () => 'X', { resolvePath: () => undefined })).toBe('$[[nope]]')
+  })
+
+  it('async: nested + cycle throw', async () => {
+    const read = mockFsAsync({ 'a/m.md': '[$[[../s.md]]]', 's.md': 'S', 'c.md': '$[[c.md]]' })
+    expect(await resolveIncludesAsync('$[[a/m.md]]', read, { resolvePath: rel })).toBe('[S]')
+    await expect(resolveIncludesAsync('$[[c.md]]', read, { resolvePath: rel, onCycle: 'throw' }))
+      .rejects.toBeInstanceOf(IncludeCycleError)
   })
 })

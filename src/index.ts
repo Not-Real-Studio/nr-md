@@ -35,7 +35,7 @@ export { parseHeaderCell, emitHeaderCell, coerceTyped, tableSchema, TableParseEr
 export type { TypedColumn, ColumnType, JSONSchema } from './typed-header.js'
 
 // ---------- Includes (format-spec §2.6) ----------
-export { resolveIncludes, resolveIncludesAsync, extractSection } from './includes.js'
+export { resolveIncludes, resolveIncludesAsync, extractSection, IncludeCycleError } from './includes.js'
 export type { IncludeOptions } from './includes.js'
 
 // ---------- Tree types ----------
