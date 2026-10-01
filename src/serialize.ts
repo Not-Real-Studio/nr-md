@@ -150,6 +150,9 @@ function flowElementNeedsQuote(s: string): boolean {
   if (s !== trimWs(s)) return true // elements are trimmed on parse
   if (hasChar(s, '\n') || hasChar(s, '\t')) return true
   if (hasChar(s, ',')) return true // separator
+  // A bare `[` would open a bracket group: a later comma inside it reads back as
+  // a nested list (FlowParseError, §4). Brackets in an element travel quoted.
+  if (hasChar(s, '[') || hasChar(s, ']')) return true
   if (hasChar(s, '"')) return true
   if (hasChar(s, '\\')) return true // would be eaten by the element unescape
   if (hasSubstr(s, '${')) return true

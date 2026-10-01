@@ -139,8 +139,10 @@ export function parse(text: string, options: ParseOptions = {}): Document {
     throw new Error(`baseLevel must be in 1..6, got ${baseLevel}`)
   }
 
-  // Normalise line endings (§2: parser normalises \r\n → \n).
-  const normalised = normaliseNewlines(text)
+  // Normalise line endings (§2: parser normalises \r\n → \n). A leading UTF-8
+  // BOM goes first: left in, it glues onto the first line and the first
+  // attribute silently stops being one (`\uFEFF$type: rz` → body text).
+  const normalised = normaliseNewlines(stripBom(text))
   const lines = normalised.split('\n')
 
   const root: Block = { name: '', level: 0, attrs: [], children: [] }
@@ -208,7 +210,8 @@ export function parse(text: string, options: ParseOptions = {}): Document {
     const attr = parseAttribute(line, sigil)
     if (attr) {
       // li is a 0-based index into the lines; errors (Json5ParseError) are 1-based.
-      const value = parseAttributeValue(attr.rawValue, sigil, li + 1, attr.key.join('.'))
+      const col = line.length - attr.rawValue.length + 1
+      const value = parseAttributeValue(attr.rawValue, sigil, li + 1, attr.key.join('.'), col)
       const a: Attribute = { key: attr.key, value }
       top().attrs.push(a)
       continue
@@ -226,6 +229,11 @@ export function parse(text: string, options: ParseOptions = {}): Document {
   }
 
   return { sigil, root }
+}
+
+/** Drop a leading UTF-8 byte order mark (U+FEFF). */
+export function stripBom(s: string): string {
+  return s.charCodeAt(0) === 0xfeff ? s.slice(1) : s
 }
 
 function normaliseNewlines(s: string): string {

@@ -65,14 +65,87 @@ export function unescape(s: string, mode: EscapeMode): string {
 // ---------- Flow-literal splitting (§4) ----------
 
 /**
+ * A malformed flow literal (§4): a nested list inside `$[...]`. Nesting is not
+ * part of the flow grammar — before this error `$[[1,2], x]` was cut on commas
+ * into `['[1', '2]', 'x']` without a word.
+ */
+export class FlowParseError extends Error {
+  /** 1-based line in the source document, when known. */
+  readonly line?: number
+  /** 1-based column of the nested list's `[` (in the line when known, else in the value). */
+  readonly column: number
+  /** Attribute key the value belongs to, when known. */
+  readonly key?: string
+
+  constructor(message: string, column: number, line?: number, key?: string) {
+    super(message)
+    this.name = 'FlowParseError'
+    this.line = line
+    this.column = column
+    this.key = key
+  }
+}
+
+/**
+ * Offsets of `[` and `]` that form balanced pairs in a flow-literal body.
+ * Skips the same things the splitter does: escapes, string literals, `${...}`.
+ */
+function pairedBrackets(s: string): Set<number> {
+  const paired = new Set<number>()
+  const open: number[] = []
+  let i = 0
+  let inStr = false
+  while (i < s.length) {
+    const c = s[i]
+    if (c === '\\' && i + 1 < s.length) {
+      i += 2
+      continue
+    }
+    if (inStr) {
+      if (c === '"') inStr = false
+      i++
+      continue
+    }
+    if (c === '"') {
+      inStr = true
+      i++
+      continue
+    }
+    if (c === '$' && s[i + 1] === '{') {
+      const close = findMatchingBrace(s, i + 2)
+      if (close !== -1) {
+        i = close + 1
+        continue
+      }
+    }
+    if (c === '[') open.push(i)
+    else if (c === ']' && open.length > 0) {
+      paired.add(open.pop() as number)
+      paired.add(i)
+    }
+    i++
+  }
+  return paired
+}
+
+/**
  * Split flow-literal body into elements by top-level commas, respecting
  * string literals, escape sequences and nested `${...}`.
+ *
+ * Brackets are tracked only to catch a nested list: a comma inside a BALANCED,
+ * unescaped, unquoted `[...]` would cut the group into garbage, so `nested(offset)`
+ * is called with the offset of that `[` (§4). A bracket group without a comma
+ * (`[OOC]`, `[file]`) and a bracket that never closes (`[Context:`, a bare `[`)
+ * are plain text, as before: an unpaired bracket has only one reading.
  */
-function splitFlowElements(s: string): string[] {
+function splitFlowElements(s: string, nested: (offset: number) => never): string[] {
+  const paired = pairedBrackets(s)
   const out: string[] = []
   let buf = ''
   let i = 0
   let inStr = false
+  let depth = 0
+  let openAt = 0
   while (i < s.length) {
     const c = s[i]
     if (inStr) {
@@ -108,7 +181,13 @@ function splitFlowElements(s: string): string[] {
       i = close + 1
       continue
     }
-    if (c === ',') {
+    if (c === '[' && paired.has(i)) {
+      if (depth === 0) openAt = i
+      depth++
+    } else if (c === ']' && paired.has(i)) {
+      depth--
+    } else if (c === ',') {
+      if (depth > 0) nested(openAt)
       out.push(buf)
       buf = ''
       i++
@@ -154,6 +233,7 @@ export function parseAttributeValue(
   sigil: Sigil,
   line?: number,
   key?: string,
+  column?: number,
 ): AttributeValue {
   // Trim trailing whitespace (incl. \r left after split).
   const value = trimTrailingWs(raw)
@@ -165,7 +245,19 @@ export function parseAttributeValue(
     } else {
       const inner = value.slice(2, value.length - 1)
       if (trim(inner).length === 0) return []
-      return splitFlowElements(inner).map(parseFlowElement)
+      const nested = (offset: number): never => {
+        // `column` — where the value starts in its line; `+ 2` steps over `$[`.
+        const col = (column ?? 1) + 2 + offset
+        const k = key === undefined ? 'flow literal' : `${sigil}${key}`
+        const at = line === undefined ? ` (column ${col})` : ` (line ${line}, column ${col})`
+        throw new FlowParseError(
+          `${k}${at}: nested list in a flow literal is not supported — use a JSON5 object or blocks`,
+          col,
+          line,
+          key,
+        )
+      }
+      return splitFlowElements(inner, nested).map(parseFlowElement)
     }
   }
 

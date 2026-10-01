@@ -11,9 +11,9 @@
 // facts mean is the caller's language, on top.
 
 // ---------- Parser (format-spec §1–§7) ----------
-export { parse } from './parser.js'
+export { parse, stripBom } from './parser.js'
 export { coerce, isFullyQuoted } from './coerce.js'
-export { parseAttributeValue, parseBodyValue, unescape } from './value.js'
+export { parseAttributeValue, parseBodyValue, unescape, FlowParseError } from './value.js'
 
 // ---------- JSON5 object as an attribute value (§3; json5-scalar-spec) ----------
 export { isJson5Shaped, isJson5Object, parseJson5Object, Json5ParseError } from './json5-value.js'

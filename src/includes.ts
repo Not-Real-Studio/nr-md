@@ -4,6 +4,8 @@
 // Path resolution is the caller's: `resolvePath(target, from)` makes nested
 // includes relative to the file they are written in (the core stays IO-free).
 
+import { stripBom } from './parser.js'
+
 export interface IncludeOptions {
   /** Maximum nesting depth (default: 10). */
   maxDepth?: number
@@ -216,7 +218,9 @@ function expand(
         continue
       }
 
-      const content = ctx.readFile(id)
+      const read = ctx.readFile(id)
+      // An included file's BOM would land mid-text, gluing onto whatever follows.
+      const content = read === undefined ? undefined : stripBom(read)
       if (content === undefined) {
         out += text.slice(start, i)
         continue
@@ -309,7 +313,8 @@ async function expandAsync(
         continue
       }
 
-      const content = await ctx.readFile(id)
+      const read = await ctx.readFile(id)
+      const content = read === undefined ? undefined : stripBom(read)
       if (content === undefined) {
         out += text.slice(start, i)
         continue
