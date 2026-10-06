@@ -30,6 +30,10 @@ export {
 } from './serialize.js'
 export type { TableSerializeOptions, TableRecord } from './serialize.js'
 
+// ---------- Point edits of the text (nr-md-edit-spec) ----------
+export { setAttr, removeAttr, ensureBlock, EditTargetError } from './edit.js'
+export type { BlockSelector, BlockPath, EditOptions } from './edit.js'
+
 // ---------- Typed tbl header + tableSchema (serialize-spec §2.3) ----------
 export { parseHeaderCell, emitHeaderCell, coerceTyped, tableSchema, TableParseError } from './typed-header.js'
 export type { TypedColumn, ColumnType, JSONSchema } from './typed-header.js'

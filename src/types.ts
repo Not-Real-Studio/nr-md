@@ -59,10 +59,11 @@ export type BodyValue = string | InterpolatedValue
 // ---------- Tree (§2) ----------
 
 /**
- * Source position of a tree node.
+ * Source position of a tree node — the start of the line it was read from.
  *
- * Reserved slot: nothing populates it yet. It exists so that adding position
- * tracking later cannot break an exhaustive walk written against this AST.
+ * Filled only by `parse(text, { positions: true })`; otherwise absent. Counted
+ * in the normalised text (leading BOM dropped, `\r\n` → `\n`); normalisation
+ * keeps the line count, so `line` holds for the original text too.
  */
 export interface Pos {
   /** 1-based line in the source text. */
@@ -77,7 +78,7 @@ export interface Attribute {
   /** Dotted key as segments (§2.2). Single-segment keys → array of length 1. */
   key: string[]
   value: AttributeValue
-  /** Reserved — see {@link Pos}. Not populated. */
+  /** Line of the attribute — see {@link Pos}. Only with `positions: true`. */
   pos?: Pos
 }
 
@@ -94,7 +95,7 @@ export interface Block {
   body?: BodyValue
   /** Child blocks in order of appearance. */
   children: Block[]
-  /** Reserved — see {@link Pos}. Not populated. */
+  /** Line of the header — see {@link Pos}. Only with `positions: true`; never on the root. */
   pos?: Pos
 }
 
@@ -108,6 +109,8 @@ export interface ParseOptions {
   sigil?: Sigil
   /** Offset added to the header `#` count; default 1 (h1 root). */
   baseLevel?: number
+  /** Fill `pos` on blocks and attributes (line, col 1, line-start offset). Default false. */
+  positions?: boolean
 }
 
 export interface SerializeOptions {

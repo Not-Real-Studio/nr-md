@@ -276,7 +276,7 @@ function idNeedsQuote(s: string): boolean {
   return false
 }
 
-function serializeId(id: string): string {
+export function serializeId(id: string): string {
   return idNeedsQuote(id) ? quoteScalar(id) : id
 }
 

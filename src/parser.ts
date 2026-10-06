@@ -98,7 +98,7 @@ function parseHeader(line: string, sigil: Sigil): ParsedHeader | null {
 
 // ---------- Attribute (§2.2) ----------
 
-interface ParsedAttribute {
+export interface ParsedAttribute {
   key: string[]
   rawValue: string
 }
@@ -107,7 +107,7 @@ interface ParsedAttribute {
  * Parse a line as `$key: value` / `$a.b: value`. Returns null if the line
  * is not a valid attribute.
  */
-function parseAttribute(line: string, sigil: Sigil): ParsedAttribute | null {
+export function parseAttribute(line: string, sigil: Sigil): ParsedAttribute | null {
   if (line.length === 0) return null
   if (line[0] !== sigil) return null
   let i = 1
@@ -135,6 +135,7 @@ function parseAttribute(line: string, sigil: Sigil): ParsedAttribute | null {
 export function parse(text: string, options: ParseOptions = {}): Document {
   const sigil: Sigil = options.sigil ?? '$'
   const baseLevel: number = options.baseLevel ?? 1
+  const positions = options.positions === true
   if (baseLevel < 1 || baseLevel > 6) {
     throw new Error(`baseLevel must be in 1..6, got ${baseLevel}`)
   }
@@ -144,6 +145,8 @@ export function parse(text: string, options: ParseOptions = {}): Document {
   // attribute silently stops being one (`\uFEFF$type: rz` → body text).
   const normalised = normaliseNewlines(stripBom(text))
   const lines = normalised.split('\n')
+  // Offset of the current line's start in the normalised text (positions only).
+  let lineOffset = 0
 
   const root: Block = { name: '', level: 0, attrs: [], children: [] }
   const stack: Block[] = [root]
@@ -175,6 +178,8 @@ export function parse(text: string, options: ParseOptions = {}): Document {
 
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li]
+    const offset = lineOffset
+    lineOffset += line.length + 1
     const header = parseHeader(line, sigil)
     if (header) {
       // Effective level — header.level minus (baseLevel - 1).
@@ -202,6 +207,7 @@ export function parse(text: string, options: ParseOptions = {}): Document {
         children: [],
       }
       if (header.id !== undefined) block.id = header.id
+      if (positions) block.pos = { line: li + 1, col: 1, offset }
       top().children.push(block)
       stack.push(block)
       continue
@@ -213,6 +219,7 @@ export function parse(text: string, options: ParseOptions = {}): Document {
       const col = line.length - attr.rawValue.length + 1
       const value = parseAttributeValue(attr.rawValue, sigil, li + 1, attr.key.join('.'), col)
       const a: Attribute = { key: attr.key, value }
+      if (positions) a.pos = { line: li + 1, col: 1, offset }
       top().attrs.push(a)
       continue
     }
