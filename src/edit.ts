@@ -177,11 +177,14 @@ export function removeAttr(
   if (same.length === 0) return text
 
   const { starts, ends } = scanLines(text)
-  const ranges: Array<[number, number]> = same.map((a) => {
-    const li = a.pos!.line - 1
-    // The last line has no break of its own: take the one before it instead.
+  const removed = new Set(same.map((a) => a.pos!.line - 1))
+  const ranges: Array<[number, number]> = [...removed].map((li) => {
     if (li + 1 < starts.length) return [starts[li], starts[li + 1]]
-    return li > 0 ? [ends[li - 1], ends[li]] : [starts[li], ends[li]]
+    // The last line has no break of its own: take the break of the nearest kept
+    // line above, so the text still ends the way it did (without a newline).
+    let j = li - 1
+    while (j >= 0 && removed.has(j)) j--
+    return j >= 0 ? [ends[j], ends[li]] : [starts[li], ends[li]]
   })
   ranges.sort((a, b) => a[0] - b[0])
 
